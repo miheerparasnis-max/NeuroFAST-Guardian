@@ -28,7 +28,7 @@ def test_finalize_session_uses_latest_persisted_modality_signal() -> None:
                 "status": "concerning",
                 "capture_quality": 0.93,
                 "measurement_score": 0.8,
-                "model_version": "face-landmark-observer-0.1.0",
+                "model_version": "face-landmark-observer@0.1.0",
             },
         }
         assert client.post(f"/v1/sessions/{session_id}/events", headers=headers, json=event).status_code == 201
