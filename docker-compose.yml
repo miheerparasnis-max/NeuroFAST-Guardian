@@ -1,0 +1,23 @@
+services:
+  api:
+    build:
+      context: ./backend
+    ports:
+      - "${NEUROFAST_PORT:-8000}:8000"
+    environment:
+      NEUROFAST_DATABASE_PATH: /data/neurofast.db
+      NEUROFAST_DEMO_MODE: "${NEUROFAST_DEMO_MODE:-true}"
+      NEUROFAST_CORS_ORIGINS: "${NEUROFAST_CORS_ORIGINS:-http://localhost:3000}"
+      NEUROFAST_REQUEST_MAX_BYTES: "${NEUROFAST_REQUEST_MAX_BYTES:-1048576}"
+      NEUROFAST_RATE_LIMIT_PER_MINUTE: "${NEUROFAST_RATE_LIMIT_PER_MINUTE:-60}"
+      NEUROFAST_API_KEYS: "${NEUROFAST_API_KEYS:-}"
+    volumes:
+      - neurofast_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  neurofast_data:
