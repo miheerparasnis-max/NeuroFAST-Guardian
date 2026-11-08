@@ -32,7 +32,7 @@ def test_session_event_is_idempotent_and_exportable() -> None:
                 "status": "no_concerning_signal",
                 "capture_quality": 0.92,
                 "measurement_score": 0.08,
-                "model_version": "face-landmark-observer-0.1.0",
+                "model_version": "face-landmark-observer@0.1.0",
             },
         }
         first = client.post(f"/v1/sessions/{session_id}/events", headers=headers, json=payload)
