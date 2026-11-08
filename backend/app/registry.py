@@ -45,3 +45,29 @@ MODEL_REGISTRY = (
         status="prototype",
     ),
 )
+
+
+TASK_TO_MODALITY = {
+    "face_video": Modality.FACE,
+    "speech_clip": Modality.SPEECH,
+    "arm_drift": Modality.ARM,
+    "eye_gaze": Modality.EYE,
+}
+
+
+def validate_registered_signal(task: str, model_version: str | None) -> None:
+    """Reject unregistered model provenance for a modality measurement."""
+    expected_modality = TASK_TO_MODALITY.get(task)
+    if expected_modality is None:
+        return
+    if not model_version:
+        raise ValueError("A registered model_version is required for a modality measurement.")
+    registered = {
+        f"{item.model_id}@{item.version}"
+        for item in MODEL_REGISTRY
+        if item.modality == expected_modality
+    }
+    if model_version not in registered:
+        raise ValueError(
+            f"Unregistered model_version for {expected_modality}: use one of {sorted(registered)}"
+        )
