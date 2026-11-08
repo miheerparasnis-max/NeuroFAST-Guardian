@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0",
+  "policy": "No raw patient media belongs in git, containers, logs, or the production API. Acquire and store approved data outside this repository.",
+  "datasets": [
+    {
+      "id": "toronto_neuroface",
+      "modality": "face",
+      "target": "post-stroke orofacial motion and landmark robustness",
+      "access": "application_required",
+      "source_url": "https://slp.utoronto.ca/faculty/yana-yunusova/speech-production-lab/datasets/",
+      "allowed_next_step": "Have an academic sponsor submit the access request and retain the signed agreement.",
+      "not_valid_for": "acute-stroke diagnosis, emergency triage validation, population-level performance claims"
+    },
+    {
+      "id": "palsy_330",
+      "modality": "face",
+      "target": "facial palsy versus normal video classification",
+      "access": "publisher-hosted download; license verification required before use",
+      "source_url": "https://github.com/ChangYuance/DP-Face",
+      "allowed_next_step": "Read the dataset license and obtain it only through the author-provided channel.",
+      "not_valid_for": "proof that facial palsy is caused by acute stroke"
+    },
+    {
+      "id": "aphasiabank_psst",
+      "modality": "speech",
+      "target": "post-stroke speech transcription and speech-quality feature robustness",
+      "access": "public challenge package; comply with project conditions",
+      "source_url": "https://talkbank.org/aphasia/derived/RaPID/index.html",
+      "allowed_next_step": "Use only for post-stroke speech-processing experiments, with subject-level splits.",
+      "not_valid_for": "stroke versus non-stroke diagnostic classifier"
+    },
+    {
+      "id": "bridge2ai_voice",
+      "modality": "speech",
+      "target": "derived speech-feature pipeline and audio-quality robustness",
+      "access": "credentialed PhysioNet registered access; raw audio separately controlled",
+      "source_url": "https://physionet.org/content/b2ai-voice/4.0.0/",
+      "allowed_next_step": "Create a PhysioNet account, complete credentialing, and sign the data-use agreement.",
+      "not_valid_for": "acute-stroke classifier; the registered dataset has derived features, not raw audio"
+    },
+    {
+      "id": "stroke_rehab_or_rehab_kinematics",
+      "modality": "arm",
+      "target": "post-stroke upper-limb movement feature engineering",
+      "access": "source-specific research terms",
+      "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10530637/",
+      "allowed_next_step": "Verify the linked repository license and use for movement-measurement research only.",
+      "not_valid_for": "phone-camera arm-drift validation during acute stroke"
+    },
+    {
+      "id": "gazebase_or_open_gaze",
+      "modality": "eye",
+      "target": "gaze-task quality control and eye-event extraction",
+      "access": "open research download",
+      "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8285447/",
+      "allowed_next_step": "Use as a healthy-control engineering dataset only.",
+      "not_valid_for": "stroke-related eye movement classification"
+    }
+  ]
+}
