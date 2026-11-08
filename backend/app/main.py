@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from .handoff import create_assessment_response, merge_session_observations
 from .protocol import next_protocol_step
-from .registry import MODEL_REGISTRY
+from .registry import MODEL_REGISTRY, validate_registered_signal
 from .safety import decide
 from .schemas import (
     AlertPreviewRequest,
@@ -170,6 +170,11 @@ def record_task_event(
 ) -> TaskEventResponse:
     if not storage.get_session(owner_id, session_id):
         raise HTTPException(status_code=404, detail="Session not found.")
+    if request.signal:
+        try:
+            validate_registered_signal(request.task, request.signal.model_version)
+        except ValueError as error:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
     event_id, created_at, _created = storage.create_task_event(owner_id, session_id, request)
     return TaskEventResponse(
         id=event_id,
