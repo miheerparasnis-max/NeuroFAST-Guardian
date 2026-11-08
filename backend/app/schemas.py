@@ -218,3 +218,72 @@ class ProtocolResponse(BaseModel):
     remaining_tasks: list[TaskName]
     instructions: list[str]
     safety_message: str
+
+
+class Modality(StrEnum):
+    FACE = "face"
+    SPEECH = "speech"
+    ARM = "arm"
+    EYE = "eye"
+
+
+class TaskEventOutcome(StrEnum):
+    STARTED = "started"
+    COMPLETED = "completed"
+    RETAKE_REQUESTED = "retake_requested"
+    INCONCLUSIVE = "inconclusive"
+    SKIPPED = "skipped"
+
+
+class CreateSessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    consent_to_store_session: bool
+    label: Annotated[str | None, Field(max_length=80)] = None
+
+
+class SessionResponse(BaseModel):
+    id: UUID
+    created_at: datetime
+    label: str | None
+
+
+class TaskEventRequest(BaseModel):
+    """Privacy-preserving event metadata; raw media and embeddings are not accepted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    client_event_id: UUID
+    task: TaskName
+    outcome: TaskEventOutcome
+    occurred_at: datetime
+    signal: ModelSignal | None = None
+    note: Annotated[str | None, Field(max_length=240)] = None
+
+
+class TaskEventResponse(TaskEventRequest):
+    id: UUID
+    session_id: UUID
+    created_at: datetime
+
+
+class ModelManifest(BaseModel):
+    model_id: str
+    version: str
+    modality: Modality
+    input_contract: str
+    derived_outputs: list[str]
+    raw_media_leaves_device: bool
+    medical_claim: str
+    status: str
+
+
+class DataExportResponse(BaseModel):
+    exported_at: datetime
+    schema_version: str
+    baselines: list[dict]
+    assessments: list[dict]
+    trusted_contacts: list[dict]
+    alerts: list[dict]
+    sessions: list[dict]
+    task_events: list[dict]
