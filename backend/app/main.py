@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .handoff import create_assessment_response, merge_session_observations
 from .protocol import next_protocol_step
@@ -31,6 +33,7 @@ from .schemas import (
     TrustedContactRequest,
     TrustedContactResponse,
 )
+from .security import FixedWindowRateLimiter, resolve_api_key_owner
 from .settings import settings
 from .storage import Storage, utcnow
 
@@ -43,14 +46,30 @@ app = FastAPI(
         "emergency care."
     ),
 )
+logger = logging.getLogger("neurofast.api")
 storage = Storage(settings.database_path)
+rate_limiter = FixedWindowRateLimiter(settings.rate_limit_per_minute)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type", "X-Demo-User-Id"],
+    allow_headers=["Content-Type", "X-Demo-User-Id", "X-API-Key"],
 )
+
+
+
+@app.middleware("http")
+async def enforce_transport_guardrails(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > settings.request_max_bytes:
+        return JSONResponse(status_code=413, content={"detail": "Request body exceeds configured limit."})
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.on_event("startup")
@@ -58,23 +77,45 @@ def startup() -> None:
     storage.initialize()
 
 
-def demo_owner_id(
+def authenticated_owner_id(
+    x_api_key: Annotated[str | None, Header()] = None,
     x_demo_user_id: Annotated[str | None, Header()] = None,
 ) -> str:
-    if not x_demo_user_id or len(x_demo_user_id) > 100:
+    owner_id = resolve_api_key_owner(x_api_key, settings.api_keys)
+    if settings.api_keys:
+        if not owner_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Valid X-API-Key required.")
+    elif settings.demo_mode:
+        owner_id = x_demo_user_id
+        if not owner_id or len(owner_id) > 100:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="X-Demo-User-Id header is required in demo mode.",
+            )
+    else:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="X-Demo-User-Id header is required for the prototype.",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication is not configured.",
         )
-    return x_demo_user_id
+
+    if not rate_limiter.allow(owner_id):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded.")
+    return owner_id
 
 
-OwnerId = Annotated[str, Depends(demo_owner_id)]
+OwnerId = Annotated[str, Depends(authenticated_owner_id)]
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "mode": "demo" if settings.demo_mode else "configured"}
+
+
+@app.get("/ready")
+def ready() -> dict[str, str]:
+    if not storage.is_ready():
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Database unavailable.")
+    return {"status": "ready"}
 
 
 @app.get("/v1/model-policy", response_model=ModelPolicyResponse)
