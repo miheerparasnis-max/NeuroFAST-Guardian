@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .handoff import create_assessment_response, merge_session_observations
+from .notifications import NotificationDispatcher, NotificationMessage, PreviewNotificationProvider
 from .protocol import next_protocol_step
 from .registry import MODEL_REGISTRY, validate_registered_signal
 from .safety import decide
@@ -49,6 +50,7 @@ app = FastAPI(
 logger = logging.getLogger("neurofast.api")
 storage = Storage(settings.database_path)
 rate_limiter = FixedWindowRateLimiter(settings.rate_limit_per_minute)
+notification_dispatcher = NotificationDispatcher(PreviewNotificationProvider())
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(settings.cors_origins),
@@ -316,10 +318,17 @@ def preview_alert(request: AlertPreviewRequest, owner_id: OwnerId) -> AlertPrevi
         details.append(f"Location: {assessment_request.location_label}.")
     details.append("Please call or check on them. Emergency services should be contacted for sudden symptoms.")
     message = " ".join(details)
+    delivery = notification_dispatcher.deliver(
+        NotificationMessage(
+            assessment_id=request.assessment_id,
+            trusted_contact_id=request.trusted_contact_id,
+            body=message,
+        )
+    )
     alert_id = storage.save_alert(owner_id, request.assessment_id, request.trusted_contact_id, message)
     return AlertPreviewResponse(
         id=alert_id,
-        delivery_mode="preview_only" if settings.demo_mode else "provider_not_configured",
+        delivery_mode=delivery.mode,
         message=message,
         disclaimer=(
             "No SMS was sent by this endpoint. Production notifications require a verified "
