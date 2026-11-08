@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .schemas import Modality, ModelManifest
+from .schemas import Modality, ModelManifest, ObservableSignals, SignalStatus
 
 
 MODEL_REGISTRY = (
@@ -71,3 +71,17 @@ def validate_registered_signal(task: str, model_version: str | None) -> None:
         raise ValueError(
             f"Unregistered model_version for {expected_modality}: use one of {sorted(registered)}"
         )
+
+
+def validate_observable_signals(signals: ObservableSignals) -> None:
+    """Require registered provenance for every client-model observation in an assessment."""
+    field_to_task = {
+        "face_asymmetry": "face_video",
+        "speech_change": "speech_clip",
+        "arm_drift": "arm_drift",
+        "eye_movement": "eye_gaze",
+    }
+    for field_name, task in field_to_task.items():
+        signal = getattr(signals, field_name)
+        if signal.status != SignalStatus.NOT_CAPTURED:
+            validate_registered_signal(task, signal.model_version)
