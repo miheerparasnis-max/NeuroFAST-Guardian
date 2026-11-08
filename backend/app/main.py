@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
+from .handoff import create_assessment_response, merge_session_observations
 from .protocol import next_protocol_step
 from .registry import MODEL_REGISTRY
 from .safety import decide
@@ -18,7 +19,8 @@ from .schemas import (
     CreateBaselineRequest,
     CreateSessionRequest,
     DataExportResponse,
-    EmergencyHandoff,
+    FinalizeSessionRequest,
+    SessionHandoffResponse,
     ModelPolicyResponse,
     ProtocolRequest,
     ProtocolResponse,
@@ -151,6 +153,48 @@ def list_task_events(session_id: UUID, owner_id: OwnerId) -> list[TaskEventRespo
     ]
 
 
+@app.post(
+    "/v1/sessions/{session_id}/finalize",
+    response_model=SessionHandoffResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def finalize_session(
+    session_id: UUID, request: FinalizeSessionRequest, owner_id: OwnerId
+) -> SessionHandoffResponse:
+    """Compile stored derived observations with symptom/timeline context into a handoff."""
+    if not storage.get_session(owner_id, session_id):
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    provenance = [
+        TaskEventResponse(
+            id=row["id"],
+            session_id=row["session_id"],
+            created_at=row["created_at"],
+            **TaskEventRequest.model_validate_json(row["event_json"]).model_dump(),
+        )
+        for row in storage.list_task_events(owner_id, session_id)
+    ]
+    merged = merge_session_observations(
+        request.assessment,
+        [
+            TaskEventRequest(
+                client_event_id=event.client_event_id,
+                task=event.task,
+                outcome=event.outcome,
+                occurred_at=event.occurred_at,
+                signal=event.signal,
+                note=event.note,
+            )
+            for event in provenance
+        ],
+    )
+    return SessionHandoffResponse(
+        session_id=session_id,
+        assessment=create_assessment_response(storage, owner_id, merged),
+        provenance=provenance,
+    )
+
+
 @app.get("/v1/me/export", response_model=DataExportResponse)
 def export_my_data(owner_id: OwnerId) -> DataExportResponse:
     """Portable copy of stored data for the authenticated demo identity."""
@@ -178,24 +222,7 @@ def create_baseline(request: CreateBaselineRequest, owner_id: OwnerId) -> Baseli
 
 @app.post("/v1/assessments", response_model=AssessmentResponse, status_code=status.HTTP_201_CREATED)
 def create_assessment(request: AssessmentRequest, owner_id: OwnerId) -> AssessmentResponse:
-    decision = decide(request)
-    assessment_id, created_at = storage.create_assessment(owner_id, request, decision)
-    handoff = EmergencyHandoff(
-        assessment_id=assessment_id,
-        created_at=created_at,
-        symptoms_noticed_at=request.symptoms_noticed_at,
-        last_known_well_at=request.last_known_well_at,
-        observed_signs=decision.reasons.copy(),
-        witness_name=request.witness_name,
-        witness_phone=request.witness_phone,
-        taking_blood_thinners=request.taking_blood_thinners,
-        location_label=request.location_label,
-        disclaimer=(
-            "Prototype only. This handoff summarizes reported and device-observed signals; "
-            "it does not diagnose or rule out stroke."
-        ),
-    )
-    return AssessmentResponse(id=assessment_id, decision=decision, handoff=handoff)
+    return create_assessment_response(storage, owner_id, request)
 
 
 @app.post(
