@@ -287,3 +287,17 @@ class DataExportResponse(BaseModel):
     alerts: list[dict]
     sessions: list[dict]
     task_events: list[dict]
+
+
+class FinalizeSessionRequest(BaseModel):
+    """Adds symptom/timeline context to consented, stored modality observations."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assessment: AssessmentRequest
+
+
+class SessionHandoffResponse(BaseModel):
+    session_id: UUID
+    assessment: AssessmentResponse
+    provenance: list[TaskEventResponse]
