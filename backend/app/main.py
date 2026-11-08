@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from .handoff import create_assessment_response, merge_session_observations
 from .notifications import NotificationDispatcher, NotificationMessage, PreviewNotificationProvider
 from .protocol import next_protocol_step
-from .registry import MODEL_REGISTRY, validate_registered_signal
+from .registry import MODEL_REGISTRY, validate_observable_signals, validate_registered_signal
 from .safety import decide
 from .schemas import (
     AlertPreviewRequest,
@@ -120,6 +120,14 @@ def authenticated_owner_id(
 
 
 OwnerId = Annotated[str, Depends(authenticated_owner_id)]
+
+
+
+def ensure_assessment_provenance(request: AssessmentRequest) -> None:
+    try:
+        validate_observable_signals(request.signals)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
 
 
 @app.get("/health")
@@ -253,6 +261,7 @@ def finalize_session(
             for event in provenance
         ],
     )
+    ensure_assessment_provenance(merged)
     return SessionHandoffResponse(
         session_id=session_id,
         assessment=create_assessment_response(storage, owner_id, merged),
@@ -287,6 +296,7 @@ def create_baseline(request: CreateBaselineRequest, owner_id: OwnerId) -> Baseli
 
 @app.post("/v1/assessments", response_model=AssessmentResponse, status_code=status.HTTP_201_CREATED)
 def create_assessment(request: AssessmentRequest, owner_id: OwnerId) -> AssessmentResponse:
+    ensure_assessment_provenance(request)
     return create_assessment_response(storage, owner_id, request)
 
 
