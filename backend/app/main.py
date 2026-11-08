@@ -64,8 +64,13 @@ app.add_middleware(
 @app.middleware("http")
 async def enforce_transport_guardrails(request: Request, call_next):
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > settings.request_max_bytes:
-        return JSONResponse(status_code=413, content={"detail": "Request body exceeds configured limit."})
+    if content_length:
+        try:
+            declared_size = int(content_length)
+        except ValueError:
+            return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length."})
+        if declared_size > settings.request_max_bytes:
+            return JSONResponse(status_code=413, content={"detail": "Request body exceeds configured limit."})
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
