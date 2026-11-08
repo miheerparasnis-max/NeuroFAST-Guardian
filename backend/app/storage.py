@@ -268,3 +268,14 @@ class Storage:
                 "audit_events",
             ):
                 con.execute(f"DELETE FROM {table} WHERE owner_id = ?", (owner_id,))
+
+
+    def is_ready(self) -> bool:
+        try:
+            with self.connection() as con:
+                con.execute("SELECT 1").fetchone()
+            return True
+        except sqlite3.Error:
+            logger = __import__("logging").getLogger("neurofast.storage")
+            logger.exception("database readiness check failed")
+            return False
