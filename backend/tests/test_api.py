@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from app.main import app, storage
 
 
-def setup_function() -> None:
+def setup_function(_: object) -> None:
     storage.initialize()
     storage.delete_owner_data("test-user")
 
