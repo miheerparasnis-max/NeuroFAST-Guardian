@@ -12,6 +12,7 @@ Safety-first backend for the NeuroFAST Guardian hackathon prototype. It stores c
 - Creates a time-stamped emergency handoff card.
 - Produces preview-only trusted-contact notifications unless an approved provider is configured.
 - Supports deleting a user's stored baselines, assessments, contacts, and alerts.
+- Orchestrates an adaptive face, speech, arm, and eye capture sequence without using any model score as a severity grade.
 
 ## Run locally
 
@@ -59,6 +60,7 @@ curl -X POST http://127.0.0.1:8000/v1/assessments \
 
 - `GET /health` - service status.
 - `GET /v1/model-policy` - exposes the non-diagnostic privacy and safety contract.
+- `POST /v1/protocol/next` - returns the next guided capture step or immediately prioritizes emergency handoff.
 - `POST /v1/baselines` - stores consented derived baseline features only.
 - `POST /v1/assessments` - produces a conservative escalation decision and handoff.
 - `POST /v1/trusted-contacts` and `GET /v1/trusted-contacts` - manages consented contacts.
@@ -66,6 +68,16 @@ curl -X POST http://127.0.0.1:8000/v1/assessments \
 - `DELETE /v1/me/data` - deletes all data owned by the demo user.
 
 `POST /v1/alerts/preview` requires that the assessment was created with `consent_to_store_assessment: true`; this prevents storing an emergency event merely to send an alert without the user's explicit consent.
+
+
+## Adaptive protocol
+
+The frontend sends derived measurements and the tasks already completed to `POST /v1/protocol/next`.
+
+- If a sudden symptom is reported or any observable signal is concerning, the next task is always `emergency_call`. The remaining items collect last-known-well time and a handoff without delaying the call.
+- If a capture is inconclusive and no acute warning sign is present, the protocol requests a retake of that specific task. It never converts a poor capture into reassurance.
+- Otherwise, the protocol sequences face video, speech clip, arm drift, eye gaze, then the handoff card.
+- The endpoint has no "severity" field, no prediction probability, and no "wait-and-see" path.
 
 ## Tests
 
