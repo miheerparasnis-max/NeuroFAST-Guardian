@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -19,6 +20,10 @@ from .schemas import (
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class IdempotencyConflict(ValueError):
+    pass
 
 
 class Storage:
@@ -42,6 +47,10 @@ class Storage:
         with self.connection() as con:
             con.executescript(
                 """
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version TEXT PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS baselines (
                     id TEXT PRIMARY KEY,
                     owner_id TEXT NOT NULL,
@@ -182,6 +191,21 @@ class Storage:
             self._audit(con, owner_id, "previewed", "trusted_contact_alert", alert_id)
         return alert_id
 
+    def has_recent_alert(
+        self, owner_id: str, assessment_id: UUID, contact_id: UUID, cooldown_seconds: int
+    ) -> bool:
+        cutoff = (utcnow() - timedelta(seconds=cooldown_seconds)).isoformat()
+        with self.connection() as con:
+            row = con.execute(
+                """
+                SELECT 1 FROM alerts
+                WHERE owner_id = ? AND assessment_id = ? AND trusted_contact_id = ? AND created_at > ?
+                LIMIT 1
+                """,
+                (owner_id, str(assessment_id), str(contact_id), cutoff),
+            ).fetchone()
+        return row is not None
+
     def create_session(self, owner_id: str, request: CreateSessionRequest) -> tuple[UUID, datetime]:
         session_id, created_at = uuid4(), utcnow()
         with self.connection() as con:
@@ -205,10 +229,17 @@ class Storage:
         """Returns id, timestamp, and whether this was a new idempotent write."""
         with self.connection() as con:
             existing = con.execute(
-                "SELECT id, created_at FROM task_events WHERE owner_id = ? AND client_event_id = ?",
+                "SELECT id, session_id, event_json, created_at FROM task_events WHERE owner_id = ? AND client_event_id = ?",
                 (owner_id, str(request.client_event_id)),
             ).fetchone()
             if existing:
+                if (
+                    existing["session_id"] != str(session_id)
+                    or existing["event_json"] != request.model_dump_json()
+                ):
+                    raise IdempotencyConflict(
+                        "client_event_id was already used for different session event content."
+                    )
                 return UUID(existing["id"]), datetime.fromisoformat(existing["created_at"]), False
 
             event_id, created_at = uuid4(), utcnow()
@@ -276,6 +307,5 @@ class Storage:
                 con.execute("SELECT 1").fetchone()
             return True
         except sqlite3.Error:
-            logger = __import__("logging").getLogger("neurofast.storage")
-            logger.exception("database readiness check failed")
+            logging.getLogger("neurofast.storage").exception("database readiness check failed")
             return False
