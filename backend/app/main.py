@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
+from .protocol import next_protocol_step
 from .safety import decide
 from .schemas import (
     AlertPreviewRequest,
@@ -16,6 +17,8 @@ from .schemas import (
     CreateBaselineRequest,
     EmergencyHandoff,
     ModelPolicyResponse,
+    ProtocolRequest,
+    ProtocolResponse,
     TrustedContactRequest,
     TrustedContactResponse,
 )
@@ -77,6 +80,17 @@ def model_policy() -> ModelPolicyResponse:
             "care. No result rules out stroke."
         ),
     )
+
+
+@app.post("/v1/protocol/next", response_model=ProtocolResponse)
+def protocol_next(request: ProtocolRequest, owner_id: OwnerId) -> ProtocolResponse:
+    """Return the next guided capture or emergency-handoff action.
+
+    The owner header is required for a consistent API boundary even though this endpoint
+    does not persist the request. The result is intentionally non-diagnostic.
+    """
+    _ = owner_id
+    return next_protocol_step(request)
 
 
 @app.post("/v1/baselines", response_model=BaselineResponse, status_code=status.HTTP_201_CREATED)
