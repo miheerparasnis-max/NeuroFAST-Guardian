@@ -1,0 +1,28 @@
+{
+  "policy": "Public-download sources only. Raw media stays outside git and is never sent to the NeuroFAST API.",
+  "datasets": [
+    {
+      "id": "psst_train",
+      "modality": "speech",
+      "download_url": "https://media.talkbank.org/open/RaPID/train.tar.gz",
+      "license_or_terms_url": "https://talkbank.org/aphasia/derived/RaPID/index.html",
+      "role": "post-stroke speech feature extraction and transcription/correctness research",
+      "not_valid_for": "acute stroke classification or emergency triage"
+    },
+    {
+      "id": "stroke_rehab_upper_limb",
+      "modality": "arm",
+      "download_page": "https://data.mendeley.com/datasets/49h9dcwx5v/1",
+      "license": "CC BY 4.0",
+      "role": "mobile-camera upper-limb movement feature engineering",
+      "not_valid_for": "acute arm-drift diagnosis"
+    },
+    {
+      "id": "gazebase",
+      "modality": "eye",
+      "download_page": "https://figshare.com/articles/dataset/GazeBase_Data_Repository_of_Eye_Tracking_Data_During_Reading/12912257",
+      "role": "gaze-event extraction and capture-quality engineering",
+      "not_valid_for": "stroke-related gaze classification"
+    }
+  ]
+}
