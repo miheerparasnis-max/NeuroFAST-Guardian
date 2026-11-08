@@ -45,7 +45,7 @@ if __name__ == "__main__":
     with tarfile.open(args.archive, "r:gz") as archive:
         labels_member = next(item for item in archive.getmembers() if item.name.endswith("utterances.tsv"))
         labels = list(csv.DictReader(io.TextIOWrapper(archive.extractfile(labels_member), encoding="utf-8"), delimiter="\t"))
-        members = {item.name.lstrip("./"): item for item in archive.getmembers() if item.name.endswith(".wav")}
+        members = {\n            "/".join(item.name.lstrip("./").split("/")[1:]): item\n            for item in archive.getmembers()\n            if item.name.endswith(".wav")\n        }
         rows = []
         for label in labels:
             member = members.get(label["filename"].lstrip("./"))
