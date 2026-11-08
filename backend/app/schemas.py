@@ -182,3 +182,39 @@ class ModelPolicyResponse(BaseModel):
     emergency_call_placed_by_server: bool
     model_location: str
     safety_rule: str
+
+
+class TaskName(StrEnum):
+    EMERGENCY_CALL = "emergency_call"
+    LAST_KNOWN_WELL = "last_known_well"
+    FACE_VIDEO = "face_video"
+    SPEECH_CLIP = "speech_clip"
+    ARM_DRIFT = "arm_drift"
+    EYE_GAZE = "eye_gaze"
+    TRUSTED_CONTACT = "trusted_contact"
+    HANDOFF = "handoff"
+
+
+class ProtocolRequest(BaseModel):
+    """Protocol state only; client-side models supply derived observations separately."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assessment: AssessmentRequest
+    completed_tasks: list[TaskName] = Field(default_factory=list)
+
+    @field_validator("completed_tasks")
+    @classmethod
+    def completed_tasks_are_unique(cls, value: list[TaskName]) -> list[TaskName]:
+        if len(set(value)) != len(value):
+            raise ValueError("completed_tasks must not contain duplicates")
+        return value
+
+
+class ProtocolResponse(BaseModel):
+    mode: str
+    emergency_recommended: bool
+    next_task: TaskName | None
+    remaining_tasks: list[TaskName]
+    instructions: list[str]
+    safety_message: str
