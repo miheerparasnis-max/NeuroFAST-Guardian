@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Annotated
 from uuid import UUID
 
@@ -36,7 +37,7 @@ from .schemas import (
 )
 from .security import FixedWindowRateLimiter, resolve_api_key_owner
 from .settings import settings
-from .storage import Storage, utcnow
+from .storage import IdempotencyConflict, Storage, utcnow
 
 
 app = FastAPI(
@@ -63,6 +64,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def enforce_transport_guardrails(request: Request, call_next):
+    started_at = time.perf_counter()
     content_length = request.headers.get("content-length")
     if content_length:
         try:
@@ -72,6 +74,13 @@ async def enforce_transport_guardrails(request: Request, call_next):
         if declared_size > settings.request_max_bytes:
             return JSONResponse(status_code=413, content={"detail": "Request body exceeds configured limit."})
     response = await call_next(request)
+    logger.info(
+        "request_complete method=%s path=%s status=%s duration_ms=%d",
+        request.method,
+        request.url.path,
+        response.status_code,
+        (time.perf_counter() - started_at) * 1000,
+    )
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
@@ -182,7 +191,10 @@ def record_task_event(
             validate_registered_signal(request.task, request.signal.model_version)
         except ValueError as error:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
-    event_id, created_at, _created = storage.create_task_event(owner_id, session_id, request)
+    try:
+        event_id, created_at, _created = storage.create_task_event(owner_id, session_id, request)
+    except IdempotencyConflict as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     return TaskEventResponse(
         id=event_id,
         session_id=session_id,
@@ -312,6 +324,12 @@ def preview_alert(request: AlertPreviewRequest, owner_id: OwnerId) -> AlertPrevi
     contact = storage.get_contact(owner_id, request.trusted_contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Trusted contact not found.")
+
+    if storage.has_recent_alert(owner_id, request.assessment_id, request.trusted_contact_id, 60):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="A notification preview for this contact was already created in the last minute.",
+        )
 
     assessment_request = AssessmentRequest.model_validate_json(assessment["request_json"])
     details = [
