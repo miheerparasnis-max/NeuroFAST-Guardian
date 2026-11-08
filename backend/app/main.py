@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from .protocol import next_protocol_step
+from .registry import MODEL_REGISTRY
 from .safety import decide
 from .schemas import (
     AlertPreviewRequest,
@@ -15,15 +16,21 @@ from .schemas import (
     AssessmentResponse,
     BaselineResponse,
     CreateBaselineRequest,
+    CreateSessionRequest,
+    DataExportResponse,
     EmergencyHandoff,
     ModelPolicyResponse,
     ProtocolRequest,
     ProtocolResponse,
+    ModelManifest,
+    SessionResponse,
+    TaskEventRequest,
+    TaskEventResponse,
     TrustedContactRequest,
     TrustedContactResponse,
 )
 from .settings import settings
-from .storage import Storage
+from .storage import Storage, utcnow
 
 
 app = FastAPI(
@@ -91,6 +98,67 @@ def protocol_next(request: ProtocolRequest, owner_id: OwnerId) -> ProtocolRespon
     """
     _ = owner_id
     return next_protocol_step(request)
+
+
+@app.get("/v1/model-registry", response_model=list[ModelManifest])
+def model_registry() -> list[ModelManifest]:
+    """Expose the exact prototype modality contracts to make model provenance reviewable."""
+    return list(MODEL_REGISTRY)
+
+
+@app.post("/v1/sessions", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
+def create_session(request: CreateSessionRequest, owner_id: OwnerId) -> SessionResponse:
+    if not request.consent_to_store_session:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Explicit consent is required before storing a task-event session.",
+        )
+    session_id, created_at = storage.create_session(owner_id, request)
+    return SessionResponse(id=session_id, created_at=created_at, label=request.label)
+
+
+@app.post(
+    "/v1/sessions/{session_id}/events",
+    response_model=TaskEventResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def record_task_event(
+    session_id: UUID, request: TaskEventRequest, owner_id: OwnerId
+) -> TaskEventResponse:
+    if not storage.get_session(owner_id, session_id):
+        raise HTTPException(status_code=404, detail="Session not found.")
+    event_id, created_at, _created = storage.create_task_event(owner_id, session_id, request)
+    return TaskEventResponse(
+        id=event_id,
+        session_id=session_id,
+        created_at=created_at,
+        **request.model_dump(),
+    )
+
+
+@app.get("/v1/sessions/{session_id}/events", response_model=list[TaskEventResponse])
+def list_task_events(session_id: UUID, owner_id: OwnerId) -> list[TaskEventResponse]:
+    if not storage.get_session(owner_id, session_id):
+        raise HTTPException(status_code=404, detail="Session not found.")
+    return [
+        TaskEventResponse(
+            id=row["id"],
+            session_id=row["session_id"],
+            created_at=row["created_at"],
+            **TaskEventRequest.model_validate_json(row["event_json"]).model_dump(),
+        )
+        for row in storage.list_task_events(owner_id, session_id)
+    ]
+
+
+@app.get("/v1/me/export", response_model=DataExportResponse)
+def export_my_data(owner_id: OwnerId) -> DataExportResponse:
+    """Portable copy of stored data for the authenticated demo identity."""
+    return DataExportResponse(
+        exported_at=utcnow(),
+        schema_version="1.0",
+        **storage.export_owner_data(owner_id),
+    )
 
 
 @app.post("/v1/baselines", response_model=BaselineResponse, status_code=status.HTTP_201_CREATED)
