@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from .protocol import next_protocol_step
@@ -188,5 +188,6 @@ def preview_alert(request: AlertPreviewRequest, owner_id: OwnerId) -> AlertPrevi
 
 
 @app.delete("/v1/me/data", status_code=status.HTTP_204_NO_CONTENT)
-def delete_my_data(owner_id: OwnerId) -> None:
+def delete_my_data(owner_id: OwnerId) -> Response:
     storage.delete_owner_data(owner_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
